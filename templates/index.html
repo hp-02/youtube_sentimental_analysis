@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Youtube Comment Sentimental Analysis</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://unpkg.com/react-plotly.js@latest/dist/create-plotly-component.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.3.2/axios.min.js"
+    integrity="sha512-NCiXRSV460cHD9ClGDrTbTaw0muWUBf/zB/yLzJavRsPNUl9ODkUVmUHsZtKu17XknhsGlmyVoJxLg/ZQQEeGA=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+
+<body class="bg-slate-700">
+  <div id="root"></div>
+  <script type="text/babel">
+
+    // https://www.youtube.com/watch?v=kJQP7kiw5Fk
+    function retrieveYoutubeVideoId(url) {
+      let regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+      let match = url.match(regExp);
+      return (match && match[7].length == 11) ? match[7] : false;
+    }
+
+    function validateYoutubeUrl(url) {
+      let p = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/gm;
+      if (url.match(p)) return true;
+      return false;
+    }
+
+    function App() {
+      const [youtubeURL, setYoutubeURL] = React.useState("https://www.youtube.com/watch?v=kJQP7kiw5Fk");
+      const [error, setError] = React.useState({ youtubeURL: false });
+      const [comments, setComments] = React.useState([]);
+      const [loadingComment, setLoadingComment] = React.useState(false);
+      const [rating, setRating] = React.useState({ positive: 0, negative: 0 });
+
+      function getComments() {
+        if (validateYoutubeUrl(youtubeURL) && retrieveYoutubeVideoId(youtubeURL)) {
+          error.youtubeURL = false;
+          setLoadingComment(true);
+          comments.length = 0;
+          setComments([...comments]);
+          rating.positive = 0;
+          rating.negative = 0;
+          setRating({ ...rating });
+          axios.post('http://localhost:5000/api/comments', { video_id: retrieveYoutubeVideoId(youtubeURL) })
+            .then(({ data }) => {
+              data.result.items.forEach(item => {
+                const top = item.snippet.topLevelComment.snippet;
+                comments.push({
+                  id: item.id,
+                  textOriginal: top.textOriginal,
+                  likeCount: top.likeCount,
+                  publishedAt: top.publishedAt,
+                  authorDisplayName: top.authorDisplayName,
+                  authorProfileImageUrl: top.authorProfileImageUrl,
+                  bgColor: 'bg-white'
+                });
+                getRating(top.textOriginal, item.id);
+              });
+              setComments([...comments]);
+              setLoadingComment(false);
+            })
+            .catch(err => {
+              if (err.response.data.status === 'error')
+                setError({ ...error, youtubeURL: true });
+              setLoadingComment(false);
+            });
+        }
+        else error.youtubeURL = true;
+        setError({ ...error });
+      }
+
+      function getRating(text, comment_id) {
+        let retry = 0;
+        function fetchRating(text, comment_id) {
+          axios.post('http://localhost:5000/api/rating', { text: text, comment_id: comment_id })
+            .then(({ data }) => {
+              const comment_id = data.result.comment_id;
+              const comment = comments.find(i => i.id === comment_id);
+              comment.textTranslate = data.result.textTranslate;
+              comment.rating = data.result.rating[0];
+              comment.bgColor = comment.rating.label !== "NEGATIVE" ? 'bg-green-100' : 'bg-red-100';
+              rating.positive += comment.rating.label !== "NEGATIVE" ? 1 : 0;
+              rating.negative += comment.rating.label === "NEGATIVE" ? 1 : 0;
+              setRating({ ...rating });
+              setComments([...comments]);
+            })
+            .catch(err => {
+              if (err.response.data.status === 'error')
+                console.log(err.response.data);
+              if (retry > 2) return;
+              fetchRating(text, comment_id);
+              retry += 1;
+            });
+        }
+        fetchRating(text, comment_id);
+      }
+
+      return (
+        <div className='p-2'>
+          <div>
+            <label
+              className='block text-gray-500 font-bold mb-1 md:mb-0 pr-4 text-white'
+              htmlFor='youtubeURL'>Enter Youtube Video URL</label>
+            <input
+              className='bg-gray-200 appearance-none border-2 border-gray-200 rounded w-full py-2 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-purple-500'
+              name='youtubeURL'
+              value={youtubeURL}
+              onChange={(e) => {
+                setYoutubeURL(e.target.value);
+                setError({ ...error, youtubeURL: !validateYoutubeUrl(e.target.value) });
+              }} />
+            {error.youtubeURL && <p className='text-red-500'>Please check your URL</p>}
+          </div>
+          <button
+            className='w-full my-2 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded'
+            onClick={getComments}
+          >Retrieve Comments</button>
+
+          {
+            loadingComment && <>
+              <CommentPlaceHolder />
+              <CommentPlaceHolder />
+              <CommentPlaceHolder />
+            </>
+          }
+          {
+            comments.length > 0 &&
+            <div className='flex flex-wrap md:flex-nowrap'>
+              <PlotComponent rating={rating} className='w-full md:w-min h-min md:mr-2 mt-2 bg-slate-100' />
+              <div>
+                {comments.map(comment =>
+                  <div key={comment.id}>
+                    <Comment comment={comment} />
+                  </div>
+                )}
+              </div>
+            </div>
+          }
+        </div>
+      );
+    }
+
+    function PlotComponent({ rating, className }) {
+      const Plot = createPlotlyComponent.default(Plotly);
+
+      return React.createElement(Plot, {
+        data: [{
+          x: ['Positive', 'Negative'],
+          y: [rating.positive, rating.negative], type: 'bar',
+          marker: {
+            color: ['#dcfce7', '#fee2e2']
+          },
+          plotlyOption: { responsive: true, scrollZoom: true }
+        }],
+        className: className
+      })
+    }
+
+    function CommentPlaceHolder() {
+      return (
+        <div className='p-2 border border-gray-200 my-2'>
+          <div className='flex items-center'>
+            <p className='animate-pulse w-[36px] h-[36px] bg-slate-100 rounded-full'></p>
+            <p className='h-8 animate-pulse bg-slate-100 ml-4 w-full'></p>
+          </div>
+          <p className='h-20 animate-pulse bg-slate-100 mt-2'></p>
+        </div>
+      )
+    }
+
+    function Comment({ comment }) {
+      const { textOriginal, authorDisplayName, authorProfileImageUrl,
+        textTranslate, rating,
+        bgColor, likeCount, publishedAt
+      } = comment;
+
+      return (
+        <div className={'p-2 border border-gray-200 my-2 ' + bgColor}>
+          <div className='flex items-center'>
+            <img className='w-[36px] h-[36px] rounded-full' src={authorProfileImageUrl} alt={authorDisplayName}
+              onError={(e) => {
+                e.target.src = "https://img.icons8.com/material/48/null/user-male-circle--v1.png"
+              }} />
+            <p className='ml-4 w-full'>{authorDisplayName} </p>
+          </div>
+          <div className='mt-2 p-2'>
+            <p className='font-bold'>Original Text</p>
+            <p>{textOriginal}</p>
+            <p className='font-bold'>Translated Text</p>
+            {
+              !textTranslate &&
+              <p className='h-20 animate-pulse bg-slate-200 mt-2'></p>
+            }
+            <p>{textTranslate}</p>
+          </div>
+          <div className='mt-2 p-2 flex justify-between'>
+            <p>Likes: {likeCount}</p>
+            <p>{formatDate(publishedAt)} </p>
+          </div>
+        </div>
+      )
+    }
+
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+
+    function formatDate(dateVal) {
+      let newDate = new Date(dateVal);
+
+      let sMonth = padValue(newDate.getMonth() + 1);
+      let sDay = padValue(newDate.getDate());
+      let sYear = newDate.getFullYear();
+      let sHour = newDate.getHours();
+      let sMinute = padValue(newDate.getMinutes());
+      let sAMPM = "AM";
+
+      let iHourCheck = parseInt(sHour);
+
+      if (iHourCheck > 12) {
+        sAMPM = "PM";
+        sHour = iHourCheck - 12;
+      }
+      else if (iHourCheck === 0) {
+        sHour = "12";
+      }
+
+      sHour = padValue(sHour);
+
+      return sDay + "-" + sMonth + "-" + sYear + " " + sHour + ":" + sMinute + " " + sAMPM;
+    }
+
+    function padValue(value) {
+      return (value < 10) ? "0" + value : value;
+    }
+  </script>
+</body>
+
+</html>
