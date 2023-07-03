@@ -17,7 +17,7 @@
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 
-<body class="bg-slate-700">
+<body>
   <div id="root"></div>
   <script type="text/babel">
 
@@ -50,7 +50,7 @@
           rating.positive = 0;
           rating.negative = 0;
           setRating({ ...rating });
-          axios.post('http://localhost:5000/api/comments', { video_id: retrieveYoutubeVideoId(youtubeURL) })
+          axios.post('/api/comments', { video_id: retrieveYoutubeVideoId(youtubeURL) })
             .then(({ data }) => {
               data.result.items.forEach(item => {
                 const top = item.snippet.topLevelComment.snippet;
@@ -81,7 +81,7 @@
       function getRating(text, comment_id) {
         let retry = 0;
         function fetchRating(text, comment_id) {
-          axios.post('http://localhost:5000/api/rating', { text: text, comment_id: comment_id })
+          axios.post('/api/rating', { text: text, comment_id: comment_id })
             .then(({ data }) => {
               const comment_id = data.result.comment_id;
               const comment = comments.find(i => i.id === comment_id);
@@ -108,7 +108,7 @@
         <div className='p-2'>
           <div>
             <label
-              className='block text-gray-500 font-bold mb-1 md:mb-0 pr-4 text-white'
+              className='block text-gray-500 font-bold mb-1 md:mb-0 pr-4'
               htmlFor='youtubeURL'>Enter Youtube Video URL</label>
             <input
               className='bg-gray-200 appearance-none border-2 border-gray-200 rounded w-full py-2 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-purple-500'
@@ -136,7 +136,7 @@
             comments.length > 0 &&
             <div className='flex flex-wrap md:flex-nowrap'>
               <PlotComponent rating={rating} className='w-full md:w-min h-min md:mr-2 mt-2 bg-slate-100' />
-              <div>
+              <div className='w-full'>
                 {comments.map(comment =>
                   <div key={comment.id}>
                     <Comment comment={comment} />
@@ -154,8 +154,9 @@
 
       return React.createElement(Plot, {
         data: [{
-          x: ['Positive', 'Negative'],
-          y: [rating.positive, rating.negative], type: 'bar',
+          labels: ['Positive', 'Negative'],
+          values: [rating.positive, rating.negative], type: 'pie',
+          hole: 0.4,
           marker: {
             color: ['#dcfce7', '#fee2e2']
           },

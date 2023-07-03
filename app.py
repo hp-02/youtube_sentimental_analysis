@@ -6,7 +6,7 @@ from transformers import pipeline
 sent_pipeline = pipeline('sentiment-analysis')
 
 app = Flask(__name__)
-API_KEY = 'AIzaSyBSw5beK6oL_ErfROGuOJHw6UONAiA8vEk'
+API_KEY = 'YOUR_API_KEY'
 api = Api(api_key=API_KEY)
 
 
@@ -47,4 +47,4 @@ def getRating():
         return {'status': 'error', 'result': 'provide json body'}, 400
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True, port=4567)
